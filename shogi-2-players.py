@@ -1,9 +1,15 @@
+# Simple, two-player Shogi game minus a few rules for now.
+# Improving as we go. Also implementing a bot and AI to play the game.
+# Author : Pranay Venkatesh (Supreme Fiend)
+
 # TODO:
-#       Make move rules for promoted pieces
 #       Check for jumping over other pieces
 #       Victory conditions
 #       Ban moving under check
-#       Implement all Komadai rules
+
+# POSSIBLE IMPROVEMENTS:
+#                       RESURRECTION AND IT'S RULES
+#                       PROMOTIONS AND MOVEMENT FOR PROMOTED PIECES
 
 
 import pygame
@@ -14,9 +20,57 @@ win = pygame.display.set_mode((1000, 1000))
 
 pygame.display.set_caption("Shogi 2 Players")
 
+
+black_turn = True
+
 board = []
+buttons = []
 komadai_white = []
 komadai_black = []
+font = pygame.font.SysFont('Arial', 25)
+
+
+class Button:
+    def __init__(self, x, y, width, height, text, clickable_colour, unclickable_colour, clicked_colour, text_colour):
+        self.x = x
+        self.y = y
+        self.height = height
+        self.width = width
+        self.text = text
+        self.bgcolour = unclickable_colour
+        self.clickable_colour = clickable_colour
+        self.unclickable_colour = unclickable_colour
+        self.clicked_colour = clicked_colour
+        self.text_colour = text_colour
+        self.clickable = False
+        buttons.append(self)
+
+    def draw(self, surf, fent):
+        pygame.draw.rect(surf, self.bgcolour, (self.x, self.y, self.width, self.height))
+        text = fent.render(self.text, 1, self.text_colour)
+        win.blit(text,
+                 (self.x + (self.width / 2 - text.get_width() / 2), self.y + (self.height / 2 - text.get_height() / 2)))
+
+    def is_over(self, pos):
+        if pos[0] > self.x and pos[0] < self.x + self.width:
+            if pos[1] > self.y and pos[1] < self.y + self.height:
+                return True
+        return False
+
+    def set_clickable(self):
+        self.clickable = True
+        self.bgcolour = self.clickable_colour
+
+    def set_unclickable(self):
+        self.clickable = False
+        self.bgcolour = self.unclickable_colour
+
+    def perform_button_operation(self):
+        if self.text == 'PROMOTE':
+            for r in board:
+                for c in r:
+                    if c.clicked:
+                        c.player.promote()
 
 
 class Piece:
@@ -26,6 +80,7 @@ class Piece:
         self.y = y
         board[x][y].player = self
         self.side = side
+        self.imgsrc = imgsrc
         self.img = pygame.image.load(imgsrc)
         self.promotable = False
 
@@ -34,6 +89,12 @@ class Piece:
             x = self.name
             self.name = "+"
             self.name += x
+            omgsrc = self.imgsrc
+            omgsrc.replace('piece-pics/', '')
+            new_img_src = 'piece-pics/promoted_'
+            new_img_src += omgsrc
+            self.imgsrc = new_img_src
+            self.img = pygame.image.load
 
 
 class Square:
@@ -117,6 +178,16 @@ def move_rule_check(p1, p2):
                 return True
             else:
                 return False
+        if p1.player.name == 'R':
+            if p2.pos_x == p1.pos_x:
+                return True
+            if p2.pos_y == p1.pos_y:
+                return True
+            return False
+        if p1.player.name == 'B':
+            if abs(p2.pos_x - p1.pos_x) == abs(p2.pos_y - p1.pos_y):
+                return True
+            return False
         if p1.player.name == 'N':
             if abs(p1.pos_x - p2.pos_x) == 1 and p2.pos_y - p1.pos_y == 2:
                 return True
@@ -159,6 +230,16 @@ def move_rule_check(p1, p2):
                 return True
             else:
                 return False
+        if p1.player.name == 'R':
+            if p2.pos_x == p1.pos_x:
+                return True
+            if p1.pos_y == p2.pos_y:
+                return True
+            return False
+        if p1.player.name == 'B':
+            if abs(p1.pos_x - p2.pos_x) == abs(p1.pos_y - p2.pos_y):
+                return True
+            return False
         if p1.player.name == 'N':
             if abs(p1.pos_x - p2.pos_x) == 1 and p1.pos_y - p2.pos_y == 2:
                 return True
@@ -208,11 +289,17 @@ def change_turn():
 def refresh():
     win.fill((255, 255, 255))
     print_board()
+    for c in komadai_black:
+        c.draw()
+    for c in komadai_white:
+        c.draw()
+    for button in buttons:
+        button.draw(win, font)
 
+
+promote = Button(650, 500, 100, 60, 'PROMOTE', (0, 255, 0), (255, 0, 0), (0, 0, 0), (0, 0, 0))
 
 run = True
-
-black_turn = True
 
 while run:
     refresh()
@@ -223,6 +310,10 @@ while run:
             pygame.quit()
             break
         if event.type == pygame.MOUSEBUTTONDOWN:
+            for button in buttons:
+                if button.is_over(pygame.mouse.get_pos()):
+                    button.perform_button_operation()
+
             for row in board:
                 for s in row:
                     if s.is_over(pygame.mouse.get_pos()) and s.clicked:
@@ -230,6 +321,8 @@ while run:
                         break
                     elif s.is_over(pygame.mouse.get_pos()) and not s.clicked:
                         s.clicked = True
+                        if s.player is not None and s.player.promotable:
+                            promote.set_clickable()
                         for r2 in board:
                             for s2 in r2:
                                 if s2.clicked and s2 is not s:
@@ -238,12 +331,26 @@ while run:
                                         if ((s2.player.side == 'BLACK' and black_turn) or (s2.player.side == 'WHITE' and not black_turn)) and ((s.player is None) or (s.player.side is not s2.player.side)):
                                             if move_rule_check(s2, s):
                                                 p = s2.player
+                                                if black_turn:
+                                                    if s.pos_y <= 2:
+                                                        p.promotable = True
+                                                if not black_turn:
+                                                    if s.pos_y >= 7:
+                                                        p.promotable = True
                                                 s2.player = None
                                                 if s.player is not None:
                                                     if black_turn:
-                                                        komadai_black.append(s.player)
+                                                        sq = Square(12, 12)
+                                                        sq.player = s.player
+                                                        sq.print_x = 650 + 60 * (len(komadai_black))
+                                                        sq.print_y = 650
+                                                        komadai_black.append(sq)
                                                     else:
-                                                        komadai_white.append(s.player)
+                                                        sq = Square(12, 12)
+                                                        sq.player = s.player
+                                                        sq.print_x = 650 + 60 * (len(komadai_white))
+                                                        sq.print_y = 120
+                                                        komadai_white.append(sq)
                                                 s.player = p
                                                 s.clicked = False
                                                 black_turn = not black_turn
